@@ -1,0 +1,116 @@
+from sklearn.model_selection import KFold
+from sklearn.model_selection import cross_validate
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import RandomizedSearchCV
+import numpy as np
+import pandas as pd 
+
+class Judge:
+    
+    def __init__(self,nome_dataframe):
+        from sklearn.model_selection import KFold
+        from sklearn.model_selection import cross_validate
+        from sklearn.model_selection import train_test_split
+        from sklearn.model_selection import GridSearchCV
+        from sklearn.model_selection import RandomizedSearchCV
+        self.nome_dataframe = nome_dataframe
+        self.X = None
+        self.y = None
+        self.pipes = None
+        self.pipe_names = None
+        self.params_pipe = None
+        self.metrics = None
+        return None
+        
+        
+    def __str__(self):
+        return f" Judging {self.nome_dataframe}"
+        
+    
+    def set_data(self,X,y):
+        self.X = X
+        self.y = y
+        return self
+    
+    def set_pipes_and_names(self,pipes,pipe_names):
+        self.pipes = pipes
+        self.pipe_names = pipe_names
+        return self
+    
+    def set_params(self, params_pipe):
+        self.params_pipe = params_pipe
+        return self
+    
+    
+    def set_metrics(self, metrics):
+        self.metrics = metrics
+        return self
+    
+        
+    @staticmethod
+    def Class_info(cls):
+        
+        class_info = f"""Judge class contains methods for optimizing machine learning 
+        performance and metrics evaluation for binary classification. It uses nested cross validation.
+        
+        Methods: 
+        set_data -> to introduce data. X for the independent variables, y for the target. 
+        set_algorithm_and_names -> to introduce different models (list) and their names (array). 
+        set_params -> giving parameters for optimizing performances (dictionary) 
+        set_metrics -> to introduce metrics to evaluate
+        get_final_performance -> to start the analysis 
+        Hyperparameters get_final_performance:
+        cv_inner_splits: inner cross validation  
+        cv_outer_splits: outer cross validation 
+        metric_to_optimize:
+        metric to optimize during parameter tuning (default: roc_auc) 
+        find_params: set algorithm for parameters search -> GridSearchCV or RandomizedSearchCV(
+        default: GridSearchCV)
+        Returns:
+        Metric performance tab for each model (Dataframe) """
+        
+        return print(class_info)
+    
+    
+    def __Construct_matrix_df(self,pipe_names,scores):
+    
+        Compacted_perf_values = np.hsplit(scores,len(self.metrics)) 
+        Performance_matrix = np.append(pipe_names,Compacted_perf_values).reshape(len(self.metrics)+1,len(self.pipes)).T 
+        columns_vector = np.insert(self.metrics,0,"model") 
+        Performance_matrix_df = pd.DataFrame(data=Performance_matrix,columns=columns_vector)
+        return Performance_matrix_df
+    
+    def __get_performance_from_algorithm(self, pipe, grid, X, y, metrics,inner_cv,outer_cv,find_params,metric_to_optimize):
+        
+        if grid == {}:
+            cvl = cross_validate(pipe, X, y, scoring = metrics,cv=self.outer_cv)
+            results = np.array(list(cvl.values()))[2::,:]
+        
+        else:
+            if self.find_params == "GridSearchCV":
+                clf = GridSearchCV(estimator = pipe, param_grid = grid, scoring = metrics,refit=metric_to_optimize,cv=self.inner_cv)
+            elif self.find_params == "RandomizedSearchCV":
+                clf = RandomizedSearchCV(estimator = pipe, param_distributions= grid, scoring = metrics,refit=metric_to_optimize,cv=self.inner_cv)
+            cvl = cross_validate(clf, X, y, scoring = metrics,cv=self.outer_cv)
+            results = np.array(list(cvl.values()))[2::,:]
+        
+        results = np.mean(results,axis=1)
+        return np.round(results*100,2)
+    
+    def get_final_performance(self,cv_inner_splits,cv_outer_splits,metric_to_optimize = "roc_auc",find_params="GridSearchCV"):
+        self.inner_cv = KFold(n_splits=cv_inner_splits,shuffle=True)
+        self.outer_cv = KFold(n_splits=cv_outer_splits,shuffle=True)
+        self.find_params = find_params
+        self.metric_to_optimize = metric_to_optimize
+        self.scores = np.zeros((len(self.pipes),len(self.metrics))) 
+        for pipe in range(len(self.pipes)):
+            grid = {}
+            if self.pipe_names[pipe] in self.params_pipe.keys(): 
+                grid = self.params_pipe[self.pipe_names[pipe]]
+            
+            score = self.__get_performance_from_algorithm(self.pipes[pipe],grid,self.X,self.y,self.metrics,self.inner_cv,self.outer_cv,self.find_params,self.metric_to_optimize) 
+            self.scores[pipe] = score 
+        
+        
+        Performance_matrix_df = self.__Construct_matrix_df(self.pipe_names,self.scores)
+        return Performance_matrix_df
